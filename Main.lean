@@ -1,3 +1,7 @@
+import Std.Http
+
+open Std Async Http Server
+
 def getFile (filename : System.FilePath) : IO (Option String) := do
   let existFile ← filename.pathExists
   if not existFile then
@@ -28,9 +32,24 @@ def makeHtmlList (entries : List String) : String :=
   let content := "".intercalate (entries.map wrapper)
   s!"<ul>{content}</ul>"
 
+structure Api
+
+instance : Handler Api where
+  onRequest _ req := do
+    IO.eprintln s!"{req.line.method} {req.line.uri} {req.line.version}"
+    Response.ok |>.text "Hello, Lean"
+
+def startServer (port : UInt16) : IO Unit := Async.block do
+  let address : Net.SocketAddress := .v4 ⟨.ofParts 127 0 0 1, port⟩
+  let server ← Server.serve address Api.mk
+  IO.eprintln s!"Server running on {address}"
+  server.waitShutdown
+
 def main (args : List String) : IO Unit :=
   match args with
-  | [] => IO.eprintln "usage: simpleserver [dir]"
-  | dirname :: _ => do
-    let files ← getDirectoryContent ⟨dirname⟩
-    IO.println ∘ makeHtmlList $ (files.map makeHtmlLink).toList
+  | [] => IO.eprintln "usage: simpleserver [port]"
+  | port :: _ => do
+    let p := port.toNat?
+    match p with
+    | none => IO.eprintln s!"Invalid port: {port}, port must be a positive integer."
+    | some n => startServer $ UInt16.ofNat n
