@@ -32,12 +32,44 @@ def makeHtmlList (entries : List String) : String :=
   let content := "".intercalate (entries.map wrapper)
   s!"<ul>{content}</ul>"
 
+def formatDirectoryListing (entries : Array String) : String :=
+  let list := makeHtmlList $ (entries.map makeHtmlLink).toList
+  s!"<html><body>{list}</body></html>"
+
 structure Api
+
+def getIndexOrDirectory : IO String := do
+  let index ← getFile "index.html"
+  match index with
+  | some content => pure content
+  | none => do
+    let files ← getDirectoryContent "."
+    pure $ formatDirectoryListing files
+
+def Api.get (req : Request Body.Stream) : Async (Response Body.Full) := do
+  match req.line.uri with
+  | .originForm path _ =>
+    match path.segments with
+    | #[] => Response.ok |>.html (← getIndexOrDirectory)
+    | fullPath => do
+      let fullPathStr := "/".intercalate (fullPath.map toString).toList
+      let asPath : System.FilePath := ⟨fullPathStr⟩
+      if (← asPath.isDir) then
+        let content ← getDirectoryContent asPath
+        Response.ok |>.html $ formatDirectoryListing content
+      else
+        let fileContent ← getFile asPath
+        match fileContent with
+        | none => Response.notFound |>.text "Not Found"
+        | some content => Response.ok |>.text content
+  | _ => Response.notFound |>.text "Not Found"
 
 instance : Handler Api where
   onRequest _ req := do
     IO.eprintln s!"{req.line.method} {req.line.uri} {req.line.version}"
-    Response.ok |>.text "Hello, Lean"
+    match req.line.method with
+    | .get => Api.get req
+    | _ => Response.badRequest |>.text "Bad Request"
 
 def startServer (port : UInt16) : IO Unit := Async.block do
   let address : Net.SocketAddress := .v4 ⟨.ofParts 127 0 0 1, port⟩
