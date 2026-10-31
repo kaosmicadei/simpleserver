@@ -1,0 +1,7 @@
+name = "simpleserver"
+version = "0.1.0"
+defaultTargets = ["simpleserver"]
+
+[[lean_exe]]
+name = "simpleserver"
+root = "Main"
